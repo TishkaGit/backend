@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       String @id @default(uuid())
+  email    String @unique
+  password String
+  role     String
+  balance  Int    @default(0)
+
+  leads         Lead[]
+  subscriptions CampaignSubscription[]
+  transactions  Transaction[]
+  withdraws     Withdraw[]
+
+  // 👇 ВАЖНО (добавить)
+  campaigns Campaign[]
+}
+
+model Campaign {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  price       Int
+  companyId   String
+
+  company User @relation(fields: [companyId], references: [id])
+
+  leads         Lead[]
+  subscriptions CampaignSubscription[]
+}
+
+model Lead {
+  id         String   @id @default(uuid())
+  name       String
+  phone      String
+  email      String?
+  price      Int
+  status     String   @default("NEW")
+  userId     String? // кто взял
+  campaignId String
+  createdAt  DateTime @default(now())
+
+  user     User?    @relation(fields: [userId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model CampaignSubscription {
+  id         String @id @default(uuid())
+  userId     String
+  campaignId String
+
+  user     User     @relation(fields: [userId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([userId, campaignId])
+}
+
+model Transaction {
+  id        String   @id @default(uuid())
+  userId    String
+  amount    Int
+  type      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Withdraw {
+  id        String   @id @default(uuid())
+  userId    String
+  amount    Int
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
