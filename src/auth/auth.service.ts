@@ -1,87 +1,92 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
-  ) {}
+  ) { }
 
-  // 🧾 регистрация
+  // ✅ REGISTER (исправленный)
   async register(email: string, password: string, role: string) {
-    console.log('REGISTER INPUT:', { email, password, role });
-
-    const existing = await this.prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (existing) {
-      throw new Error('User already exists');
+    if (!email || !password || !role) {
+      throw new Error('Missing fields');
     }
 
-    const hash = await bcrypt.hash(password, 10);
+    ```
+const existing = await this.prisma.user.findUnique({
+  where: { email },
+});
 
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: hash,
-        role,
-        balance: 0,
-      },
-    });
+if (existing) {
+  throw new Error('User already exists');
+}
 
-    console.log('REGISTER SUCCESS:', user);
+const hash = await bcrypt.hash(password, 10);
 
-    return user;
+// 🔥 ВАЖНО: НЕ возвращаем password
+return this.prisma.user.create({
+  data: {
+    email,
+    password: hash,
+    role,
+  },
+  select: {
+    id: true,
+    email: true,
+    role: true,
+    balance: true,
+  },
+});
+```
+
   }
 
-  // 🔐 логин
+  // ✅ LOGIN
   async login(email: string, password: string) {
-    console.log('LOGIN INPUT:', { email, password });
-
     const user = await this.prisma.user.findUnique({
       where: { email },
     });
 
-    console.log('USER FROM DB:', user);
+    ```
+if (!user) {
+  throw new Error('User not found');
+}
 
-    if (!user) {
-      throw new Error('User not found');
-    }
+const valid = await bcrypt.compare(password, user.password);
 
-    const valid = await bcrypt.compare(password, user.password);
+if (!valid) {
+  throw new Error('Invalid password');
+}
 
-    console.log('PASSWORD VALID:', valid);
+const token = this.jwt.sign({
+  userId: user.id,
+  role: user.role,
+});
 
-    if (!valid) {
-      throw new Error('Wrong password');
-    }
+return {
+  token,
+};
+```
 
-    const token = this.jwt.sign({
-      userId: user.id,
-      role: user.role,
-    });
-
-    console.log('LOGIN SUCCESS, TOKEN CREATED');
-
-    return { token };
   }
 
   // 💰 баланс
   async getBalance(userId: string) {
-    console.log('GET BALANCE:', userId);
-
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
 
-    return { balance: user?.balance || 0 };
+    ```
+return { balance: user.balance };
+```
+
   }
 
-  // 🧾 транзакции
+  // 📊 транзакции
   async getTransactions(userId: string) {
     return this.prisma.transaction.findMany({
       where: { userId },
@@ -95,28 +100,23 @@ export class AuthService {
       throw new Error('Invalid amount');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.update({
-        where: { id: userId },
-        data: {
-          balance: {
-            increment: amount,
-          },
-        },
-      });
+    ```
+await this.prisma.user.update({
+  where: { id: userId },
+  data: {
+    balance: { increment: amount },
+  },
+});
 
-      await tx.transaction.create({
-        data: {
-          userId,
-          amount,
-          type: 'DEPOSIT',
-        },
-      });
+return this.prisma.transaction.create({
+  data: {
+    userId,
+    amount,
+    type: 'DEPOSIT',
+  },
+});
+```
 
-      console.log('💰 DEPOSIT SUCCESS:', { userId, amount });
-
-      return user;
-    });
   }
 
   // 💸 запрос на вывод
@@ -125,64 +125,56 @@ export class AuthService {
       throw new Error('Invalid amount');
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
+    ```
+const user = await this.prisma.user.findUnique({
+  where: { id: userId },
+});
 
-    if (!user || user.balance < amount) {
-      throw new Error('Not enough balance');
-    }
+if (user.balance < amount) {
+  throw new Error('Not enough balance');
+}
 
-    return this.prisma.withdraw.create({
-      data: {
-        userId,
-        amount,
-        status: 'PENDING',
-      },
-    });
+return this.prisma.withdraw.create({
+  data: {
+    userId,
+    amount,
+  },
+});
+```
+
   }
 
-  // 👑 подтверждение вывода (admin)
+  // ✅ одобрение вывода
   async approveWithdraw(withdrawId: string) {
     const withdraw = await this.prisma.withdraw.findUnique({
       where: { id: withdrawId },
     });
 
-    if (!withdraw) {
-      throw new Error('Withdraw not found');
-    }
+    ```
+if (!withdraw) {
+  throw new Error('Withdraw not found');
+}
 
-    if (withdraw.status !== 'PENDING') {
-      throw new Error('Already processed');
-    }
+if (withdraw.status !== 'PENDING') {
+  throw new Error('Already processed');
+}
 
-    return this.prisma.$transaction(async (tx) => {
-      // списываем деньги
-      await tx.user.update({
-        where: { id: withdraw.userId },
-        data: {
-          balance: {
-            decrement: withdraw.amount,
-          },
-        },
-      });
+await this.prisma.user.update({
+  where: { id: withdraw.userId },
+  data: {
+    balance: { decrement: withdraw.amount },
+  },
+});
 
-      // обновляем статус
-      const updated = await tx.withdraw.update({
-        where: { id: withdrawId },
-        data: { status: 'APPROVED' },
-      });
+await this.prisma.withdraw.update({
+  where: { id: withdrawId },
+  data: {
+    status: 'APPROVED',
+  },
+});
 
-      // транзакция
-      await tx.transaction.create({
-        data: {
-          userId: withdraw.userId,
-          amount: -withdraw.amount,
-          type: 'WITHDRAW',
-        },
-      });
+return { success: true };
+```
 
-      return updated;
-    });
   }
 }

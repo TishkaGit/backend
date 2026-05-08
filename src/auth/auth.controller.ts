@@ -5,9 +5,13 @@ import {
   Get,
   UseGuards,
   Req,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
+
 import { AuthService } from './auth.service';
 import { JwtGuard } from './jwt/jwt.guard';
+
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -16,17 +20,36 @@ export class AuthController {
   constructor(private auth: AuthService) {}
 
   @Post('register')
-  register(@Body() body: RegisterDto) {
-    return this.auth.register(
-      body.email,
-      body.password,
-      body.role,
-    );
+  async register(@Body() body: RegisterDto) {
+    try {
+      return await this.auth.register(
+        body.email,
+        body.password,
+        body.role,
+      );
+    } catch (e: any) {
+      console.log(e);
+
+      throw new HttpException(
+        e.message || 'Register failed',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Post('login')
-  login(@Body() body: LoginDto) {
-    return this.auth.login(body.email, body.password);
+  async login(@Body() body: LoginDto) {
+    try {
+      return await this.auth.login(
+        body.email,
+        body.password,
+      );
+    } catch (e: any) {
+      throw new HttpException(
+        e.message || 'Login failed',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Get('me')
@@ -50,7 +73,10 @@ export class AuthController {
   @Post('deposit')
   @UseGuards(JwtGuard)
   deposit(@Body() body: any, @Req() req: any) {
-    return this.auth.deposit(req.user.userId, body.amount);
+    return this.auth.deposit(
+      req.user.userId,
+      body.amount,
+    );
   }
 
   @Post('withdraw')
@@ -65,6 +91,8 @@ export class AuthController {
   @Post('withdraw/approve')
   @UseGuards(JwtGuard)
   approve(@Body() body: any) {
-    return this.auth.approveWithdraw(body.withdrawId);
+    return this.auth.approveWithdraw(
+      body.withdrawId,
+    );
   }
 }

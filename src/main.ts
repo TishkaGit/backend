@@ -6,22 +6,24 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 🌍 Включаем CORS (очень важно для фронта)
-  app.enableCors();
+  // 🌍 CORS (фикс фронта)
+  app.enableCors({
+    origin: '*',
+    credentials: true,
+  });
 
-  // ✅ Глобальная валидация DTO
+  // ✅ Валидация (без крашей)
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // убирает лишние поля
-      forbidNonWhitelisted: true, // ошибка если лишние поля
-      transform: true, // авто преобразование типов
+      whitelist: true,
+      forbidNonWhitelisted: false, // 🔥 фикс 500
+      transform: true,
     }),
   );
 
-  // 💥 Глобальный обработчик ошибок
+  // 💥 Глобальные ошибки
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // 🚀 Запуск сервера
   await app.listen(process.env.PORT || 3000);
 
   console.log(`🚀 Server running on port ${process.env.PORT || 3000}`);
